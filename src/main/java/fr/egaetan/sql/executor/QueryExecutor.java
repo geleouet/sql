@@ -3,6 +3,7 @@ package fr.egaetan.sql.executor;
 import java.text.DecimalFormat;
 import java.text.NumberFormat;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -14,6 +15,7 @@ import fr.egaetan.sql.common.Column;
 import fr.egaetan.sql.common.DataRow;
 import fr.egaetan.sql.exception.ColumnDoesntExist;
 import fr.egaetan.sql.exception.UnsupportedOperation;
+import fr.egaetan.sql.query.Query.Predicate;
 import fr.egaetan.sql.query.Query.QueryPredicate;
 import fr.egaetan.sql.query.Query.QueryPredicateJoin;
 import fr.egaetan.sql.query.Query.QuerySelect;
@@ -27,15 +29,15 @@ public class QueryExecutor {
 	
 	private List<TableSelect> tables;
 	private QuerySelect querySelect;
-	private List<QueryPredicate> queryPredicates;
+	private Predicate predicate;
 	private List<QueryPredicateJoin> queryJoinPredicates;
 
 
-	public QueryExecutor(List<TableSelect> tables, QuerySelect querySelect, List<QueryPredicate> queryPredicates, List<QueryPredicateJoin> queryJoinPredicates) {
+	public QueryExecutor(List<TableSelect> tables, QuerySelect querySelect, Predicate predicate, List<QueryPredicateJoin> queryJoinPredicates) {
 		super();
 		this.tables = tables;
 		this.querySelect = querySelect;
-		this.queryPredicates = queryPredicates;
+		this.predicate = predicate;
 		this.queryJoinPredicates = queryJoinPredicates;
 	}
 
@@ -47,21 +49,54 @@ public class QueryExecutor {
 		String explain(String indent);
 		
 	}
-
-	public static class SeqScan implements Children {
-		TableSelect table;
-		private List<RowPredicate> predicates;
-		private List<NestedLoopFilter> filters;
-		private ExecutionReport report = new ExecutionReport();
+	
+	public interface Filter {
+		boolean accept(DataRow row);
+	}
+	
+	public static class AndFilter implements Filter {
+		List<Filter> filters;
 		
-		public SeqScan(TableSelect table, List<RowPredicate> predicates) {
+		public AndFilter(List<Filter> filters) {
 			super();
-			this.table = table;
-			this.predicates = predicates;
-			filters = predicates.stream().map(this::buildFilter).collect(Collectors.toList());
+			this.filters = filters;
 		}
 
-		public NestedLoopFilter buildFilter(RowPredicate filter) {
+		@Override
+		public boolean accept(DataRow row) {
+			return filters.stream().allMatch(f->f.accept(row));
+		}
+	}
+
+	public static class OrFilter implements Filter {
+		List<Filter> filters ;
+		
+		public OrFilter(List<Filter> filters) {
+			super();
+			this.filters = filters;
+		}
+		
+		@Override
+		public boolean accept(DataRow row) {
+			return filters.stream().anyMatch(f->f.accept(row));
+		}
+	}
+
+	
+	public static class SeqScan implements Children {
+		TableSelect table;
+		private Filter filter;
+		private ExecutionReport report = new ExecutionReport();
+		private Predicate predicate;
+		
+		public SeqScan(TableSelect table, Predicate predicate) {
+			super();
+			this.table = table;
+			this.predicate = predicate;
+			filter = predicate.transform(this::buildFilter);
+		}
+
+		public Filter buildFilter(RowPredicate filter) {
 			for (int j = 0; j < columns().size(); j++) {
 				if (columns().get(j).qualified().identify(filter.reference().qualified())) {
 					int j$  =j;
@@ -82,11 +117,11 @@ public class QueryExecutor {
 		}
 
 		private boolean filter(DataRow row) {
-			boolean allMatch = filters.stream().allMatch(p -> p.accept(row));
-			if (!allMatch) {
+			boolean match = filter.accept(row);
+			if (!match) {
 				report.removed();
 			}
-			return allMatch;
+			return match;
 		}
 		
 		@Override
@@ -98,8 +133,9 @@ public class QueryExecutor {
 		public String explain(String indent) {
 			String executionReport = report.explain(indent+ "    ");
 			return indent + "-> Seq Scan on " + table.name() + report.executionStatistics()
-			+ (predicates.size() > 0 ? "\n" + predicates.stream().map(p -> indent +"    "+ p.toString()).collect(Collectors.joining("\n")) : "")
-			+ (predicates.size() > 0 ? (executionReport.isEmpty() ? "" : ("\n" + executionReport)) : "");
+			//+ (predicates.size() > 0 ? "\n" + predicates.stream().map(p -> indent +"    "+ p.toString()).collect(Collectors.joining("\n")) : "")
+			//+ (predicates.size() > 0 ? (executionReport.isEmpty() ? "" : ("\n" + executionReport)) : "")
+			;
 		}
 	}
 	
@@ -418,15 +454,9 @@ public class QueryExecutor {
 		List<SeqScan> scans = new ArrayList<>();
 		for (int i = 0; i < tables.size(); i++) {
 			TableSelect table = tables.get(i);
-			List<RowPredicate> predicates = new ArrayList<>();
-
-			for (QueryPredicate queryPredicate : queryPredicates) {
-				predicates.addAll(queryPredicate.predicates(table));
-			}
-			SeqScan seqScan = new SeqScan(table, predicates);
+			SeqScan seqScan = new SeqScan(table, predicate);
 			scans.add(seqScan);
 		}
-
 
 		Children current = scans.get(0);
 		for (int i = 1; i < tables.size(); i++) {

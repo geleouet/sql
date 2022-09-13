@@ -117,7 +117,8 @@ public class SLODriverTest {
 		// GIVEN
 		Class.forName("fr.egaetan.sql.driver.SLODriver");
 		Connection con = DriverManager.getConnection("jdbc:slo://db");
-		String requete = "SELECT id, prenom FROM client WHERE prenom='achille' UNION ALL SELECT id, password FROM members WHERE id < 10--'";
+		String requete = "SELECT id, prenom FROM client WHERE prenom='achille' "
+				+ "UNION ALL SELECT id, password FROM members WHERE id < 10--'";
 		
 		
 		// WHEN
@@ -171,7 +172,7 @@ public class SLODriverTest {
 		}
 		
 		// THEN
-		Assertions.assertThat(result.split("\\n").length).isEqualTo(1);
+		Assertions.assertThat(result.split("\\n").length).isEqualTo(2);
 	}
 	
 	@Test

@@ -5,6 +5,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import fr.egaetan.sql.base.Table.ColumnType;
@@ -12,16 +13,86 @@ import fr.egaetan.sql.base.TableSelect;
 import fr.egaetan.sql.common.Column;
 import fr.egaetan.sql.exception.TableNameSpecifiedMoreThanOnce;
 import fr.egaetan.sql.executor.QueryExecutor;
+import fr.egaetan.sql.executor.QueryExecutor.AndFilter;
+import fr.egaetan.sql.executor.QueryExecutor.OrFilter;
+import fr.egaetan.sql.query.Query.Predicate;
+import fr.egaetan.sql.query.Query.RowPredicate;
 import fr.egaetan.sql.executor.QueryExecutor.Explain;
+import fr.egaetan.sql.executor.QueryExecutor.Filter;
 import fr.egaetan.sql.result.Resultat;
 
 public class Query {
 
-	public static interface RowPredicate {
+	public static interface Predicate {
+		List<Column> references();
+		
+
+		Filter transform(Function<RowPredicate, Filter> tansformer);
+
+		static final Predicate none = new Predicate() {
+			
+			@Override
+			public Filter transform(Function<RowPredicate, Filter> tansformer) {
+				return __ -> true;
+			}
+			
+			@Override
+			public List<Column> references() {
+				return Collections.emptyList();
+			}
+		};
+
+		static Predicate none() {
+			return none;
+		}
+	}
+	
+	public abstract static class ListPredicate implements Predicate {
+		List<Predicate> list = new ArrayList<>();
+		
+		@Override
+		public List<Column> references() {
+			return list.stream().flatMap(l -> l.references().stream()).collect(Collectors.toList());
+		}
+		
+	}
+	public static class SoloPredicate extends ListPredicate {
+
+		@Override
+		public Filter transform(Function<RowPredicate, Filter> tansformer) {
+			return new AndFilter(list.stream().map((Function<Predicate, Filter>) l -> l.transform(tansformer)).collect(Collectors.toList()));
+		}
+	}
+	public static class AndPredicate extends ListPredicate {
+
+		@Override
+		public Filter transform(Function<RowPredicate, Filter> tansformer) {
+			return new AndFilter(list.stream().map((Function<Predicate, Filter>) l -> l.transform(tansformer)).collect(Collectors.toList()));
+		}
+	}
+
+	public static class OrPredicate extends ListPredicate {
+		
+		@Override
+		public Filter transform(Function<RowPredicate, Filter> tansformer) {
+			return new OrFilter(list.stream().map((Function<Predicate, Filter>) l -> l.transform(tansformer)).collect(Collectors.toList()));
+		}
+	}
+	
+	
+	public static interface RowPredicate extends Predicate {
 		
 		public Column reference();
 
 		public boolean valid(Object object);
+		
+		default Filter transform(Function<RowPredicate, Filter> tansformer) {
+			return tansformer.apply(this);
+		}
+		
+		default List<Column> references() {
+			return List.of(reference());
+		}
 		
 		
 	}
@@ -145,41 +216,28 @@ public class Query {
 		}
 
 		public QueryFrom isEqualTo(Object o) {
-			queryFrom.addPredicate(new QueryEqualsPredicate(column, o));
+			queryFrom.addPredicate(new EqualsPredicate(column, o));
 			return queryFrom;
 		}
 
 		public QueryFrom isLessThan(Object o) {
-			queryFrom.addPredicate(new QueryLessThanPredicate(column, o));
+			queryFrom.addPredicate(new LessThanPredicate(column, o));
 			return queryFrom;
 		}
 
 	}
 	
-	
-	public static class QueryPredicateOrComposite implements QueryPredicate {
-
-		private List<QueryPredicate> queryPredicates;
-		
-		@Override
-		public List<RowPredicate> predicates(TableSelect table) {
-			return queryPredicates.stream().flatMap(q -> q.predicates(table).stream()).collect(Collectors.toList());
-		}
-		
-	}
-	
-
 	public static class QueryFrom {
 		
 		private List<TableSelect> tables;
 		private QuerySelect querySelect;
-		private List<QueryPredicate> queryPredicates;
+		private Predicate queryPredicate;
 		private List<QueryPredicateJoin> queryJoinPredicates;
 
 		public QueryFrom(QuerySelect querySelect, TableSelect ... tables) {
 			this.tables = new ArrayList<>(Arrays.asList(tables));
 			this.querySelect = querySelect;
-			this.queryPredicates = new ArrayList<>();
+			this.queryPredicate = Predicate.none();
 			this.queryJoinPredicates = new ArrayList<>();
 		}
 
@@ -187,17 +245,58 @@ public class Query {
 			return new QueryFrom(querySelect, tables.toArray(new TableSelect[0]));
 		}
 		
-		public void addPredicate(QueryPredicate queryPredicate) {
-			queryPredicates.add(queryPredicate);
+		public void addPredicate(Predicate predicate) {
+			if (queryPredicate instanceof ListPredicate) {
+				((ListPredicate) queryPredicate).list.add(predicate);
+				
+			}
+			else {
+				throw new RuntimeException("Incorrect WHERE Predicate");
+			}
+			//queryPredicate.add(queryPredicate);
 		}
 
 		public QueryWhere where(Column column) {
+			if (Predicate.none() == queryPredicate) {
+				queryPredicate = new SoloPredicate();
+			}
 			return new QueryWhere(this, column);
 		}
 
 		public QueryWhere and(Column column) {
-			return where(column);
+			if (Predicate.none() == queryPredicate) {
+				queryPredicate = new SoloPredicate();
+			}
+			if (queryPredicate instanceof SoloPredicate) {
+				AndPredicate p =  new AndPredicate();
+				p.list.addAll(((SoloPredicate) queryPredicate).list);
+				queryPredicate = p;
+			}
+			if (queryPredicate instanceof AndPredicate) {
+				return where(column);
+			}
+			else {
+				throw new RuntimeException("Mix of AND/OR");
+			}
 		}
+
+		public QueryWhere or(Column column) {
+			if (Predicate.none() == queryPredicate) {
+				queryPredicate = new SoloPredicate();
+			}
+			if (queryPredicate instanceof SoloPredicate) {
+				OrPredicate p =  new OrPredicate();
+				p.list.addAll(((SoloPredicate) queryPredicate).list);
+				queryPredicate = p;
+			}
+			if (queryPredicate instanceof OrPredicate) {
+				return where(column);
+			}
+			else {
+				throw new RuntimeException("Mix of AND/OR");
+			}
+		}
+		
 
 		public QueryJoin innerJoin(TableSelect tableSelect) {
 			if (tables.stream().anyMatch(t -> t.name().equalsIgnoreCase(tableSelect.name()))) {
@@ -208,12 +307,16 @@ public class Query {
 		}
 
 		public Resultat execute() {
-			QueryExecutor queryExecutor = new QueryExecutor(tables, querySelect, queryPredicates, queryJoinPredicates);
+			QueryExecutor queryExecutor = new QueryExecutor(tables, querySelect, queryPredicate, queryJoinPredicates);
 			return queryExecutor.execute();
 		}
 
 		public QueryExplain explain() {
-			return new QueryExplain(new QueryExecutor(tables, querySelect, queryPredicates, queryJoinPredicates));
+			return new QueryExplain(new QueryExecutor(tables, querySelect, queryPredicate, queryJoinPredicates));
+		}
+
+		public Predicate predicate() {
+			return queryPredicate;
 		}
 
 	

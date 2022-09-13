@@ -339,23 +339,23 @@ public class SQLParser {
 		}
 		else if (where instanceof AndExpression) {
 			AndExpression ae = (AndExpression) where;
+			query.and(null);
 			QueryFrom left = whereToken(table, query, ae.getLeftExpression());
-			QueryFrom right = whereToken(table, left, ae.getRightExpression());
+			QueryFrom right = whereToken(table, query, ae.getRightExpression());
 			query = right;
 		}
 		else if (where instanceof OrExpression) {
 			OrExpression ae = (OrExpression) where;
-			
-			QueryFrom derivate = query.derivate();
-			
-			QueryFrom left = whereToken(table, derivate, ae.getLeftExpression());
-			
-			QueryFrom right = whereToken(table, derivate, ae.getRightExpression());
+			query.or(null);
+			QueryFrom left = whereToken(table, query, ae.getLeftExpression());
+			QueryFrom right = whereToken(table, query, ae.getRightExpression());
 			query = right;
 		}
 		else if (where instanceof Parenthesis) {
 			Parenthesis ae = (Parenthesis) where;
-			throw new RuntimeException("Unknown Where " +where);
+			QueryFrom parenthesis = query.derivate();
+			whereToken(table, parenthesis, ae.getExpression());
+			query.addPredicate(parenthesis.predicate());
 		}
 		else {
 			throw new RuntimeException("Unknown Where " +where);
