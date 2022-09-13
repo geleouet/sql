@@ -39,7 +39,7 @@ public class Resultat {
 		}
 
 		public String alias() {
-			return alias;
+			return alias == null ? name : alias;
 		}
 
 		public ColumnType type() {
@@ -163,7 +163,7 @@ public class Resultat {
 		}
 		for (int i = 0; i < columns.size(); i ++) {
 			final int i$ = i;
-			OptionalInt max = rows.stream().map(r -> r.data()[i$]).mapToInt(s -> s.toString().length()).max();
+			OptionalInt max = rows.stream().map(r -> r.data()[i$]).mapToInt(s -> s==null ? 0 :s.toString().length()).max();
 			max.ifPresent(l -> {
 				if (l > columnSize.get(i$)) {
 					columnSize.set(i$, l);

@@ -68,7 +68,9 @@ public class QueryExecutor {
 					return row -> filter.valid(row.data()[j$]);
 				}
 			}
-			throw new ColumnDoesntExist(filter.reference().displayName());
+			return row -> filter.valid(filter.reference().read(row.data()));
+			
+			//throw new ColumnDoesntExist(filter.reference().displayName());
 		}
 		
 		@Override

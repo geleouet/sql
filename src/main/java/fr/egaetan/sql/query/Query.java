@@ -3,6 +3,7 @@ package fr.egaetan.sql.query;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -56,13 +57,52 @@ public class Query {
 		}
 		
 	}
+	public static class LessThanPredicate implements RowPredicate {
+		
+		private Column column;
+		private Object value;
+		
+		public LessThanPredicate(Column column, Object value) {
+			this.column = column;
+			this.value = value;
+		}
+		
+		@Override
+		public boolean valid(Object data) {
+			if (value instanceof Long) {
+				if (value instanceof Number) {
+					return ((Number) data).longValue() < ((Long) value).longValue();
+				}
+			}
+			Comparator<String> naturalOrder = Comparator.naturalOrder();
+			return naturalOrder.compare((String) value, (String) data) < 0;
+		}
+		
+		
+		@Override
+		public String toString() {
+			return "Filter: ("+column.qualifiedName() + " < " + value.toString()+")";
+		}
+		
+		@Override
+		public Column reference() {
+			return column;
+		}
+		
+	}
 
-	public static class QueryPredicate {
+	
+	
+	public static interface QueryPredicate {
+		public List<RowPredicate> predicates(TableSelect table);
+	}
+	
+	public static class QueryEqualsPredicate implements QueryPredicate {
 
 		private Object value;
 		private Column column;
 
-		public QueryPredicate(Column column, Object value) {
+		public QueryEqualsPredicate(Column column, Object value) {
 			this.column = column;
 			this.value = value;
 		}
@@ -74,6 +114,24 @@ public class Query {
 			return Collections.emptyList();
 		}
 
+	}
+	public static class QueryLessThanPredicate implements QueryPredicate {
+		
+		private Object value;
+		private Column column;
+		
+		public QueryLessThanPredicate(Column column, Object value) {
+			this.column = column;
+			this.value = value;
+		}
+		
+		public List<RowPredicate> predicates(TableSelect table) {
+			if (table.has(column)) {
+				return List.of(new LessThanPredicate(column, value));
+			}
+			return Collections.emptyList();
+		}
+		
 	}
 
 	public static class QueryWhere {
@@ -87,10 +145,27 @@ public class Query {
 		}
 
 		public QueryFrom isEqualTo(Object o) {
-			queryFrom.addPredicate(new QueryPredicate(column, o));
+			queryFrom.addPredicate(new QueryEqualsPredicate(column, o));
 			return queryFrom;
 		}
 
+		public QueryFrom isLessThan(Object o) {
+			queryFrom.addPredicate(new QueryLessThanPredicate(column, o));
+			return queryFrom;
+		}
+
+	}
+	
+	
+	public static class QueryPredicateOrComposite implements QueryPredicate {
+
+		private List<QueryPredicate> queryPredicates;
+		
+		@Override
+		public List<RowPredicate> predicates(TableSelect table) {
+			return queryPredicates.stream().flatMap(q -> q.predicates(table).stream()).collect(Collectors.toList());
+		}
+		
 	}
 	
 
@@ -108,6 +183,10 @@ public class Query {
 			this.queryJoinPredicates = new ArrayList<>();
 		}
 
+		public QueryFrom derivate() {
+			return new QueryFrom(querySelect, tables.toArray(new TableSelect[0]));
+		}
+		
 		public void addPredicate(QueryPredicate queryPredicate) {
 			queryPredicates.add(queryPredicate);
 		}
@@ -115,7 +194,6 @@ public class Query {
 		public QueryWhere where(Column column) {
 			return new QueryWhere(this, column);
 		}
-
 
 		public QueryWhere and(Column column) {
 			return where(column);
@@ -137,6 +215,8 @@ public class Query {
 		public QueryExplain explain() {
 			return new QueryExplain(new QueryExecutor(tables, querySelect, queryPredicates, queryJoinPredicates));
 		}
+
+	
 		
 	}
 	
