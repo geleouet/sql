@@ -1,5 +1,9 @@
 package fr.egaetan.sql.parser;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -32,6 +36,9 @@ import net.sf.jsqlparser.expression.StringValue;
 import net.sf.jsqlparser.expression.operators.conditional.AndExpression;
 import net.sf.jsqlparser.expression.operators.conditional.OrExpression;
 import net.sf.jsqlparser.expression.operators.relational.EqualsTo;
+import net.sf.jsqlparser.expression.operators.relational.GreaterThan;
+import net.sf.jsqlparser.expression.operators.relational.IsNullExpression;
+import net.sf.jsqlparser.expression.operators.relational.LikeExpression;
 import net.sf.jsqlparser.expression.operators.relational.MinorThan;
 import net.sf.jsqlparser.parser.CCJSqlParserUtil;
 import net.sf.jsqlparser.statement.Statement;
@@ -48,85 +55,27 @@ import net.sf.jsqlparser.statement.update.Update;
 
 public class SQLParser {
 
+	private final Base base;
+	
+	public SQLParser(Base base) {
+		super();
+		this.base = base;
+	}
+
 	private static final String SetOperationList = null;
-	static Base base = new Base();
-	static {
-		createTableClient(base);
-		createTableMembers(base);
-	}
-
-	private static String generateRandom(String chars, int len, Random random) {
-		StringBuilder sb = new StringBuilder();
-
-		for (int i = 0; i < len; i++) {
-			int randomIndex = random.nextInt(chars.length());
-			sb.append(chars.charAt(randomIndex));
-		}
-
-		return sb.toString();
-	}
 	
-	private static String generateCode() {
-		SecureRandom random = new SecureRandom();
-		String from = generateRandom("0123456789", 10, random)
-				 + generateRandom("abcdefghijklmnopqrstuvwxyz", 26, random);
-		
-		List<Integer> indexes = IntStream.range(0, from.length()).mapToObj(i -> i).collect(Collectors.toList());
-		java.util.Collections.shuffle(indexes, random);
-		
-		String p = "";
-		for (int i = 0; i < 8; i++) {
-			p += from.charAt(indexes.get(i));
-		}		
-		return p;
-	}
-
-	
-	public static Table createTableMembers(Base base) {
-		Table tableClient = base
-				.createTable("members")
-				.addColumn("id", ColumnType.ENTIER)
-				.addColumn("username", ColumnType.STRING)
-				.addColumn("password", ColumnType.STRING)
-				.build();
-		List<String> prenoms = new PrenomListe().firstnames();
-		for (int i = 0; i < prenoms.size(); i++) {
-			String prenom = prenoms.get(i);
-			tableClient.insert(
-					tableClient.values()
-					.set("id", i)
-					.set("username", prenom)
-					.set("password", generateCode())
-					);
-		}
-		
-		return tableClient;
-	}
-	private static Table createTableClient(Base base) {
-		Table tableClient = base
-				.createTable("client")
-				.addColumn("id", ColumnType.ENTIER)
-				.addColumn("prenom", ColumnType.STRING)
-				.addColumn("color", ColumnType.ENTIER)
-				.addColumn("city", ColumnType.ENTIER)
-				.build();
-		List<String> prenoms = new PrenomListe().firstnames();
-		for (int i = 0; i < prenoms.size(); i++) {
-			String prenom = prenoms.get(i);
-			tableClient.insert(
-					tableClient.values()
-						.set("id", i)
-						.set("prenom", prenom)
-						.set("color", i % 9)
-						.set("city", (i*3 + 7) % 10)
-					);
-		}
-		
-		return tableClient;
-	}
 	
 	public Resultat parse(String sql) {
 		System.out.println(sql);
+		try {
+			Files.writeString(Path.of("req.sql"), sql+"\n\n", StandardOpenOption.APPEND);
+		} catch (IOException e1) {
+			try {
+				Files.writeString(Path.of("req.sql"), sql+"\n\n", StandardOpenOption.CREATE);
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+		}
 		try {
 			Statement statement = CCJSqlParserUtil.parse(sql);
 			if (statement instanceof Select) {
@@ -256,7 +205,41 @@ public class SQLParser {
 	}
 
 	private QueryFrom whereToken(Table table, QueryFrom query, Expression where) {
-		if (where instanceof EqualsTo) {
+		if (where instanceof LikeExpression) {
+			LikeExpression eq = (LikeExpression) where;
+			if (eq.getLeftExpression() instanceof net.sf.jsqlparser.schema.Column) {
+				net.sf.jsqlparser.schema.Column c = (net.sf.jsqlparser.schema.Column) eq.getLeftExpression();
+				Column column = table.column(c.getColumnName());
+				if (eq.getRightExpression() instanceof StringValue) {
+					query = query.where(column).isLikeTo(((StringValue) eq.getRightExpression()).getValue());
+				}
+			}
+			else if (eq.getLeftExpression() instanceof StringValue) {
+				Column column = new Column() {
+					@Override
+					public boolean need(Column c) {
+						return true;
+					}
+					@Override
+					public String displayName() {
+						return ""+((StringValue) eq.getLeftExpression()).getValue();
+					}
+
+					@Override
+					public ColumnType type() {
+						return ColumnType.STRING;
+					}
+					@Override
+					public Object read(Object[] datas) {
+						return ((StringValue) eq.getLeftExpression()).getValue();
+					}	
+				};
+				if (eq.getRightExpression() instanceof StringValue) {
+					query = query.where(column).isLikeTo(((StringValue) eq.getRightExpression()).getValue());
+				}
+			}
+		}
+		else if (where instanceof EqualsTo) {
 			EqualsTo eq = (EqualsTo) where;
 			if (eq.getLeftExpression() instanceof net.sf.jsqlparser.schema.Column) {
 				net.sf.jsqlparser.schema.Column c = (net.sf.jsqlparser.schema.Column) eq.getLeftExpression();
@@ -306,7 +289,7 @@ public class SQLParser {
 					public String displayName() {
 						return ""+((StringValue) eq.getLeftExpression()).getValue();
 					}
-					
+
 					@Override
 					public ColumnType type() {
 						return ColumnType.STRING;
@@ -337,25 +320,53 @@ public class SQLParser {
 				}
 			}
 		}
+		else  if (where instanceof GreaterThan) {
+			GreaterThan eq = (GreaterThan) where;
+			if (eq.getLeftExpression() instanceof net.sf.jsqlparser.schema.Column) {
+				net.sf.jsqlparser.schema.Column c = (net.sf.jsqlparser.schema.Column) eq.getLeftExpression();
+				Column column = table.column(c.getColumnName());
+				if (eq.getRightExpression() instanceof LongValue) {
+					query = query.where(column).isGreaterThan(((LongValue) eq.getRightExpression()).getValue());
+				}
+				if (eq.getRightExpression() instanceof StringValue) {
+					query = query.where(column).isGreaterThan(((StringValue) eq.getRightExpression()).getValue());
+				}
+			}
+		}
 		else if (where instanceof AndExpression) {
 			AndExpression ae = (AndExpression) where;
-			query.and(null);
-			QueryFrom left = whereToken(table, query, ae.getLeftExpression());
-			QueryFrom right = whereToken(table, query, ae.getRightExpression());
-			query = right;
+			var l = query.derivate();
+
+			l.and(null);
+			
+			whereToken(table, l, ae.getLeftExpression());
+			whereToken(table, l, ae.getRightExpression());
+			query.addPredicate(l.predicate());
 		}
 		else if (where instanceof OrExpression) {
 			OrExpression ae = (OrExpression) where;
-			query.or(null);
-			QueryFrom left = whereToken(table, query, ae.getLeftExpression());
-			QueryFrom right = whereToken(table, query, ae.getRightExpression());
-			query = right;
+
+			var l = query.derivate();
+
+			l.or(null);
+
+			whereToken(table, l, ae.getLeftExpression());
+			whereToken(table, l, ae.getRightExpression());
+			query.addPredicate(l.predicate());
 		}
 		else if (where instanceof Parenthesis) {
 			Parenthesis ae = (Parenthesis) where;
 			QueryFrom parenthesis = query.derivate();
 			whereToken(table, parenthesis, ae.getExpression());
 			query.addPredicate(parenthesis.predicate());
+		}
+		else if (where instanceof IsNullExpression) {
+			IsNullExpression eq = (IsNullExpression) where;
+			if (eq.getLeftExpression() instanceof net.sf.jsqlparser.schema.Column) {
+				net.sf.jsqlparser.schema.Column c = (net.sf.jsqlparser.schema.Column) eq.getLeftExpression();
+				Column column = table.column(c.getColumnName());
+				query = query.where(column).isEqualTo(null);
+			}
 		}
 		else {
 			throw new RuntimeException("Unknown Where " +where);

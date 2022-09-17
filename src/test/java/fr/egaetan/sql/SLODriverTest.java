@@ -12,11 +12,13 @@ import org.junit.jupiter.api.Test;
 public class SLODriverTest {
 
 	
+	private static final String JDBC_SLO_DB = "demo";
+
 	@Test
 	public void test() throws SQLException, ClassNotFoundException {
 		// GIVEN
 		Class.forName("fr.egaetan.sql.driver.SLODriver");
-		Connection con = DriverManager.getConnection("jdbc:slo://db");
+		Connection con = DriverManager.getConnection(JDBC_SLO_DB);
 		String requete = "SELECT id, prenom FROM client WHERE id = 10";
 
 		
@@ -56,7 +58,7 @@ public class SLODriverTest {
 	public void version() throws SQLException, ClassNotFoundException {
 		// GIVEN
 		Class.forName("fr.egaetan.sql.driver.SLODriver");
-		Connection con = DriverManager.getConnection("jdbc:slo://db");
+		Connection con = DriverManager.getConnection(JDBC_SLO_DB);
 		String requete = "SELECT version()";
 		
 		
@@ -76,7 +78,7 @@ public class SLODriverTest {
 	public void shema_tables() throws SQLException, ClassNotFoundException {
 		// GIVEN
 		Class.forName("fr.egaetan.sql.driver.SLODriver");
-		Connection con = DriverManager.getConnection("jdbc:slo://db");
+		Connection con = DriverManager.getConnection(JDBC_SLO_DB);
 		String requete = "SELECT * FROM information_schema.tables";
 		
 		
@@ -96,7 +98,7 @@ public class SLODriverTest {
 	public void SQLI_1() throws SQLException, ClassNotFoundException {
 		// GIVEN
 		Class.forName("fr.egaetan.sql.driver.SLODriver");
-		Connection con = DriverManager.getConnection("jdbc:slo://db");
+		Connection con = DriverManager.getConnection(JDBC_SLO_DB);
 		String requete = "SELECT * FROM members WHERE username = 'achille'--' AND password = 'password' ";
 		
 		
@@ -116,7 +118,7 @@ public class SLODriverTest {
 	public void SQLI_2() throws SQLException, ClassNotFoundException {
 		// GIVEN
 		Class.forName("fr.egaetan.sql.driver.SLODriver");
-		Connection con = DriverManager.getConnection("jdbc:slo://db");
+		Connection con = DriverManager.getConnection(JDBC_SLO_DB);
 		String requete = "SELECT id, prenom FROM client WHERE prenom='achille' "
 				+ "UNION ALL SELECT id, password FROM members WHERE id < 10--'";
 		
@@ -137,7 +139,7 @@ public class SLODriverTest {
 	public void SQLI_3() throws SQLException, ClassNotFoundException {
 		// GIVEN
 		Class.forName("fr.egaetan.sql.driver.SLODriver");
-		Connection con = DriverManager.getConnection("jdbc:slo://db");
+		Connection con = DriverManager.getConnection(JDBC_SLO_DB);
 		String requete = "SELECT username, password FROM members WHERE username='achille' and 1=0 UNION ALL SELECT 'admin', 'helloworld'";
 		
 		
@@ -155,10 +157,52 @@ public class SLODriverTest {
 	}
 	
 	@Test
+	public void SQLI_5() throws SQLException, ClassNotFoundException {
+		// GIVEN
+		Class.forName("fr.egaetan.sql.driver.SLODriver");
+		Connection con = DriverManager.getConnection(JDBC_SLO_DB);
+		String requete = "SELECT username, password FROM members WHERE username='achille' and 1=0 or 1=1";
+		
+		
+		// WHEN
+		String result = "";
+		try {
+			result = parseResult(con, requete, result);
+		} catch (SQLException e) {
+			//traitement de l'exception
+			e.printStackTrace();
+		}
+		
+		// THEN
+		Assertions.assertThat(result.split("\\n").length).isEqualTo(11628);
+	}
+	@Test
+	public void SQLI_6() throws SQLException, ClassNotFoundException {
+		// GIVEN
+		Class.forName("fr.egaetan.sql.driver.SLODriver");
+		Connection con = DriverManager.getConnection(JDBC_SLO_DB);
+		String requete = "SELECT username, password FROM members WHERE username='achille' and 1=0 or 1=1 and username='achille'";
+		
+		
+		// WHEN
+		String result = "";
+		try {
+			result = parseResult(con, requete, result);
+		} catch (SQLException e) {
+			//traitement de l'exception
+			e.printStackTrace();
+		}
+		
+		// THEN
+		Assertions.assertThat(result.split("\\n").length).isEqualTo(1);
+	}
+	
+	
+	@Test
 	public void SQL_OR() throws SQLException, ClassNotFoundException {
 		// GIVEN
 		Class.forName("fr.egaetan.sql.driver.SLODriver");
-		Connection con = DriverManager.getConnection("jdbc:slo://db");
+		Connection con = DriverManager.getConnection(JDBC_SLO_DB);
 		String requete = "SELECT username, password FROM members WHERE username='achille' OR username='alicia'";
 		
 		
@@ -179,7 +223,7 @@ public class SLODriverTest {
 	public void SQLI_4() throws SQLException, ClassNotFoundException {
 		// GIVEN
 		Class.forName("fr.egaetan.sql.driver.SLODriver");
-		Connection con = DriverManager.getConnection("jdbc:slo://db");
+		Connection con = DriverManager.getConnection(JDBC_SLO_DB);
 		String requete = "SELECT username, password FROM members WHERE username='achille' AND (password='' OR 1=1)--'";
 		
 		
@@ -200,7 +244,7 @@ public class SLODriverTest {
 	public void expErreur_tables() throws SQLException, ClassNotFoundException {
 		// GIVEN
 		Class.forName("fr.egaetan.sql.driver.SLODriver");
-		Connection con = DriverManager.getConnection("jdbc:slo://db");
+		Connection con = DriverManager.getConnection(JDBC_SLO_DB);
 		String requete = "SELECT CASE WHEN (False) THEN CAST(1/0 AS INTEGER) ELSE NULL END";
 		
 		

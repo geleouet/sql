@@ -9,6 +9,9 @@ import java.sql.SQLFeatureNotSupportedException;
 import java.util.Properties;
 import java.util.logging.Logger;
 
+import fr.egaetan.sql.base.Base;
+import fr.egaetan.sql.base.DemoBase;
+
 public class SLODriver implements Driver {
 
 	static
@@ -23,7 +26,12 @@ public class SLODriver implements Driver {
 
 	@Override
 	public Connection connect(String url, Properties info) throws SQLException {
-		return new SLOConnection();
+		if ("demo".equals(url)) {
+			return new SLOConnection(DemoBase.base());
+		}
+		else {
+			return new SLOConnection(new Base());
+		}
 	}
 
 	@Override

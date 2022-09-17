@@ -6,7 +6,17 @@ import java.sql.ResultSet;
 import java.sql.RowIdLifetime;
 import java.sql.SQLException;
 
+import fr.egaetan.sql.base.Base;
+
 public class SLODatabaseMetaData implements DatabaseMetaData {
+
+	private final Base base;
+	
+	
+	public SLODatabaseMetaData(Base base) {
+		super();
+		this.base = base;
+	}
 
 	@Override
 	public <T> T unwrap(Class<T> iface) throws SQLException {
@@ -910,7 +920,7 @@ public class SLODatabaseMetaData implements DatabaseMetaData {
 
 	@Override
 	public Connection getConnection() throws SQLException {
-		return new SLOConnection();
+		return new SLOConnection(base);
 	}
 
 	@Override

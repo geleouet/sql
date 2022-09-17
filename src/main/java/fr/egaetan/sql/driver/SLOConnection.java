@@ -20,7 +20,16 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.Executor;
 
+import fr.egaetan.sql.base.Base;
+
 public class SLOConnection implements Connection {
+
+	private final Base base;
+	
+	public SLOConnection(Base base) {
+		super();
+		this.base = base;
+	}
 
 	@Override
 	public <T> T unwrap(Class<T> iface) throws SQLException {
@@ -36,13 +45,13 @@ public class SLOConnection implements Connection {
 
 	@Override
 	public Statement createStatement() throws SQLException {
-		return new SLOStatement();
+		return new SLOStatement(base);
 	}
 
 	@Override
 	public PreparedStatement prepareStatement(String sql) throws SQLException {
 		System.out.println("PreparedStatement "+ sql);
-		return new SLOPreparedStatement(sql);
+		return new SLOPreparedStatement(base, sql);
 	}
 
 	@Override
@@ -95,7 +104,7 @@ public class SLOConnection implements Connection {
 
 	@Override
 	public DatabaseMetaData getMetaData() throws SQLException {
-		return new SLODatabaseMetaData();
+		return new SLODatabaseMetaData(base);
 	}
 
 	@Override

@@ -6,9 +6,17 @@ import java.sql.SQLException;
 import java.sql.SQLWarning;
 import java.sql.Statement;
 
+import fr.egaetan.sql.base.Base;
 import fr.egaetan.sql.parser.SQLParser;
 
 public class SLOStatement implements Statement {
+
+	private final Base base;
+	
+	public SLOStatement(Base base) {
+		super();
+		this.base = base;
+	}
 
 	@Override
 	public <T> T unwrap(Class<T> iface) throws SQLException {
@@ -24,7 +32,7 @@ public class SLOStatement implements Statement {
 
 	@Override
 	public ResultSet executeQuery(String sql) throws SQLException {
-		return new SLOResultSet(new SQLParser().parse(sql));
+		return new SLOResultSet(new SQLParser(base).parse(sql));
 	}
 
 	@Override

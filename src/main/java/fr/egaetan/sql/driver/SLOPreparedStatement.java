@@ -21,20 +21,20 @@ import java.sql.SQLWarning;
 import java.sql.SQLXML;
 import java.sql.Time;
 import java.sql.Timestamp;
-import java.util.ArrayList;
 import java.util.Calendar;
-import java.util.List;
 
+import fr.egaetan.sql.base.Base;
 import fr.egaetan.sql.parser.SQLParser;
 
 public class SLOPreparedStatement implements PreparedStatement {
 
 	String[] params = new String[1024];
 	private String sql;
-	SQLParser sqlParser = new SQLParser();
+	SQLParser sqlParser;
 	
-	public SLOPreparedStatement(String sql) {
+	public SLOPreparedStatement(Base base, String sql) {
 		this.sql = sql;
+		this.sqlParser = new SQLParser(base);
 	}
 
 	@Override
@@ -330,7 +330,7 @@ public class SLOPreparedStatement implements PreparedStatement {
 		}
 		
 		System.out.println(sql);
-		return new SQLParser().parseUpdate(sql);
+		return sqlParser.parseUpdate(sql);
 	}
 
 	@Override

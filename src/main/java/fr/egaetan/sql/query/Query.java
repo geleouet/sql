@@ -108,6 +108,9 @@ public class Query {
 
 		@Override
 		public boolean valid(Object data) {
+			if (value == null) {
+				return data == null;
+			}
 			if (value instanceof Long) {
 				if (value instanceof Number) {
 					return ((Long) value).longValue() == ((Number) data).longValue();
@@ -122,6 +125,36 @@ public class Query {
 			return "Filter: ("+column.qualifiedName() + " = " + value.toString()+")";
 		}
 
+		@Override
+		public Column reference() {
+			return column;
+		}
+		
+	}
+	public static class LikePredicate implements RowPredicate {
+		
+		private Column column;
+		private Object value;
+		
+		public LikePredicate(Column column, Object value) {
+			this.column = column;
+			this.value = value;
+		}
+		
+		@Override
+		public boolean valid(Object data) {
+			if (value == null) {
+				return data == null;
+			}
+			return value.equals(data);
+		}
+		
+		
+		@Override
+		public String toString() {
+			return "Filter: ("+column.qualifiedName() + " LIKE " + value.toString()+")";
+		}
+		
 		@Override
 		public Column reference() {
 			return column;
@@ -153,6 +186,39 @@ public class Query {
 		@Override
 		public String toString() {
 			return "Filter: ("+column.qualifiedName() + " < " + value.toString()+")";
+		}
+		
+		@Override
+		public Column reference() {
+			return column;
+		}
+		
+	}
+	public static class GreaterThanPredicate implements RowPredicate {
+		
+		private Column column;
+		private Object value;
+		
+		public GreaterThanPredicate(Column column, Object value) {
+			this.column = column;
+			this.value = value;
+		}
+		
+		@Override
+		public boolean valid(Object data) {
+			if (value instanceof Long) {
+				if (value instanceof Number) {
+					return ((Number) data).longValue() > ((Long) value).longValue();
+				}
+			}
+			Comparator<String> naturalOrder = Comparator.naturalOrder();
+			return naturalOrder.compare((String) value, (String) data) > 0;
+		}
+		
+		
+		@Override
+		public String toString() {
+			return "Filter: ("+column.qualifiedName() + " > " + value.toString()+")";
 		}
 		
 		@Override
@@ -225,6 +291,16 @@ public class Query {
 			return queryFrom;
 		}
 
+		public QueryFrom isGreaterThan(Object o) {
+			queryFrom.addPredicate(new GreaterThanPredicate(column, o));
+			return queryFrom;
+		}
+
+		public QueryFrom isLikeTo(String o) {
+			queryFrom.addPredicate(new LikePredicate(column, o));
+			return queryFrom;
+		}
+
 	}
 	
 	public static class QueryFrom {
@@ -251,7 +327,9 @@ public class Query {
 				
 			}
 			else {
-				throw new RuntimeException("Incorrect WHERE Predicate");
+				and(null);
+				((ListPredicate) queryPredicate).list.add(predicate);
+				//throw new RuntimeException("Incorrect WHERE Predicate");
 			}
 			//queryPredicate.add(queryPredicate);
 		}
